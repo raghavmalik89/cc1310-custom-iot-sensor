@@ -53,3 +53,15 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+
+# CCS / Eclipse local settings
+**/.settings/
+**/.metadata/
+
+# CCS build output
+**/Debug/
+**/Release/
+
+# TI-RTOS / ROV generated view
+**/overview.rov.json
