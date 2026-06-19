@@ -1,70 +1,104 @@
 # CC1310 Custom IoT Sensor
 
-Firmware for a custom low-power IoT sensor node based on the Texas Instruments CC1310 sub-1 GHz wireless MCU. The current repository is focused on board bring-up, UART diagnostics, I2C sensor communication, and early accelerometer integration using the TI EasyLink example as the RF application base.
+## Project Overview
+
+Firmware for a custom battery-powered IoT sensor built around the Texas Instruments CC1310 sub-1 GHz wireless MCU. The project uses TI-RTOS, the SimpleLink CC13x0 SDK, and TI EasyLink as its current RF foundation.
+
+The present firmware validates the custom PCB, polls a LIS2DW12 accelerometer, converts samples to engineering units, and feeds them into a configurable motion engine. Application-specific RF sensor packets and low-power wake behavior are not yet implemented.
 
 ## Hardware Overview
 
-The target hardware is a custom PCB using:
+The assembled custom PCB includes:
 
-- TI CC1310 wireless MCU for the application processor and sub-1 GHz radio.
-- AHT20 temperature and humidity sensor detected on the I2C bus at `0x38`.
-- ST LIS2DW12 low-power accelerometer detected on the I2C bus at `0x19`.
-- UART debug output for bring-up and verification.
+- TI CC1310 wireless MCU.
+- AHT20 temperature and humidity sensor detected over I2C at `0x38`.
+- ST LIS2DW12 low-power accelerometer detected over I2C at `0x19`.
+- UART on DIO3 (TX) and DIO2 (RX).
+- I2C on DIO4 (SCL) and DIO5 (SDA).
+- LIS2DW12 interrupt connections on DIO15 (INT1) and DIO14 (INT2).
 
-The firmware project is currently organized around the CC1310 LaunchPad/TI-RTOS board support files while the custom PCB interface is brought up incrementally.
+Verified hardware operation:
 
-## Firmware Overview
+- The custom PCB is assembled and programmable.
+- UART diagnostics work.
+- EasyLink RF transmission works using the existing example-derived RF task.
+- I2C communication works.
+- The LIS2DW12 returns `WHO_AM_I = 0x44`.
 
-The firmware is based on TI's `rfEasyLinkEchoTx` example and retains EasyLink support for sub-1 GHz radio bring-up. A sensor task initializes UART diagnostics, opens the I2C bus, detects the LIS2DW12 at `0x19`, verifies `WHO_AM_I = 0x44`, and supports ongoing LIS2DW12 driver and polling development.
+The interrupt pins are defined in the board configuration, but interrupt handling and event-driven wake-up are not implemented.
 
-EasyLink remains present as the RF abstraction layer, but application-specific RF sensor packets are still planned work.
-
-## Current Status
-
-Completed:
-
-- UART
-- I2C
-- AHT20 detection at `0x38`
-- LIS2DW12 detection at `0x19`
-- LIS2DW12 `WHO_AM_I = 0x44` verification
-
-In Progress:
-
-- LIS2DW12 driver
-- Accelerometer polling
-
-Planned:
-
-- Motion engine
-- RF sensor packets
-- LIS2DW12 interrupts
-- Low power operation
-
-## Repository Layout
+## Repository Structure
 
 ```text
 Docs/
-  Architecture.md
-  FirmwareStructure.md
+  Architecture.md          Firmware architecture and implemented boundaries
+  FirmwareStructure.md     Firmware module and repository file guide
 Firmware/
-  rfEasyLinkEchoTx/
-    CCS project, board support, EasyLink files, sensor task, and sensor drivers
-Hardware/
-  Reserved for custom PCB design files and hardware documentation
+  rfEasyLinkEchoTx/        CCS project, application, drivers, motion engine,
+                           EasyLink, RF settings, and board support
+Hardware/                  Reserved for custom PCB files and images
 ```
+
+No hardware images are currently present under `Hardware/`.
+
+## Current Firmware Architecture
+
+The application starts two TI-RTOS tasks:
+
+- Sensor task: initializes UART and I2C, verifies the LIS2DW12, configures polling, reads XYZ acceleration, performs mg and magnitude conversion, updates the motion engine, and prints diagnostics.
+- EasyLink echo task: retains the example-derived asynchronous RF transmit/receive flow used to verify radio operation.
+
+The sensor path is layered:
+
+```text
+sensor_task
+    |
+    +-- motion_engine
+    |
+    +-- lis2dw12_driver
+            |
+            +-- lis2dw12_port_ti
+                    |
+                    +-- i2c_bus
+                            |
+                            +-- TI I2C driver
+```
+
+Configuration is centralized through:
+
+- `app_config.h` for UART enablement, accelerometer settings, and motion thresholds/timing.
+- `board_pins.h` for custom PCB UART, I2C, and LIS2DW12 interrupt pin assignments.
+
+## Current Development Status
+
+Completed and verified:
+
+- Custom CC1310 PCB assembly and programming.
+- UART operation.
+- EasyLink RF transmit operation.
+- I2C operation.
+- AHT20 detection at `0x38`.
+- LIS2DW12 detection at `0x19`.
+- LIS2DW12 `WHO_AM_I = 0x44` verification.
+- LIS2DW12 XYZ polling.
+- Integer mg conversion.
+- Acceleration magnitude calculation.
+- Rotation validation.
+- Threshold-based motion engine.
+- Compile-time configuration framework.
+
+The motion engine currently processes polled magnitude data and tracks motion state, event flags, counts, movement duration, dynamic acceleration, and maximum measured magnitude. It does not use LIS2DW12 hardware interrupts.
+
+## Roadmap
+
+- Implement LIS2DW12 interrupt handling.
+- Add event-driven wake-up.
+- Define and transmit application-specific RF sensor packets.
+- Add deep-sleep operation.
+- Optimize firmware and hardware behavior for CR2450 operation.
 
 ## Build Environment
 
-The firmware is a TI Code Composer Studio project for the CC1310 and TI-RTOS/SimpleLink SDK environment. The project metadata needed for CCS import should be committed with the firmware:
+The firmware is a TI Code Composer Studio project targeting the CC1310 with TI-RTOS and the SimpleLink CC13x0 SDK. Import `Firmware/rfEasyLinkEchoTx/` into CCS together with its TI-RTOS build dependency.
 
-- `Firmware/rfEasyLinkEchoTx/.project`
-- `Firmware/rfEasyLinkEchoTx/.cproject`
-- `Firmware/rfEasyLinkEchoTx/.ccsproject`
-- `Firmware/rfEasyLinkEchoTx/targetConfigs/`
-
-Generated `Debug/` and `Release/` outputs are intentionally ignored and should be rebuilt locally.
-
-## Publication Notes
-
-Commit source, project metadata, RF settings, target configuration, documentation, and hardware design files when they are added. Do not commit generated build output, compiler intermediates, local CCS workspace metadata, editor caches, or local automation notes.
+CCS project metadata and target configuration are retained in the repository. Generated `Debug/` and `Release/` outputs are ignored and should be rebuilt locally.

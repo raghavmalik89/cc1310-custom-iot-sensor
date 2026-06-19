@@ -1,30 +1,61 @@
 # Firmware Structure
 
-## Project
+## Project Layout
 
-The active firmware project is:
+The active Code Composer Studio project is:
 
 ```text
 Firmware/rfEasyLinkEchoTx/
 ```
 
-It is a TI Code Composer Studio project derived from the CC1310 LaunchPad TI EasyLink echo transmitter example.
+It is derived from TI's CC1310 LaunchPad `rfEasyLinkEchoTx` example and now contains the custom PCB sensor and motion-processing modules.
 
-## Important Source Areas
+```text
+Firmware/rfEasyLinkEchoTx/
+  app_config.h
+  board_pins.h
+  i2c_bus.c/.h
+  lis2dw12_port_ti.c/.h
+  lis2dw12_driver.c/.h
+  motion_engine.c/.h
+  sensor_task.c/.h
+  rfEasyLinkEchoTx.c
+  easylink/
+  smartrf_settings/
+  third_party/st/
+  targetConfigs/
+```
 
-- `rfEasyLinkEchoTx.c`: application entry point, board initialization, TI-RTOS startup, EasyLink echo task, and sensor task startup.
-- `sensor_task.c` / `sensor_task.h`: UART debug setup, I2C initialization, LIS2DW12 detection at `0x19`, `WHO_AM_I = 0x44` verification, and ongoing accelerometer polling development.
-- `i2c_bus.c` / `i2c_bus.h`: small wrapper around TI I2C driver operations.
-- `lis2dw12_driver.c` / `lis2dw12_driver.h`: project-level LIS2DW12 driver work in progress.
-- `lis2dw12_port_ti.c` / `lis2dw12_port_ti.h`: TI I2C adapter layer for the LIS2DW12 register interface.
-- `third_party/st/lis2dw12_reg.c` / `third_party/st/lis2dw12_reg.h`: LIS2DW12 register-level access layer.
-- `smartrf_settings/`: SmartRF-generated radio configuration used by EasyLink.
-- `easylink/`: TI EasyLink abstraction and configuration files used by the RF example baseline.
+## Application Modules
+
+- `rfEasyLinkEchoTx.c`: application entry point, board initialization, TI-RTOS startup, sensor task creation, and example-derived EasyLink echo task.
+- `sensor_task.c` / `sensor_task.h`: UART diagnostics and the polling workflow for LIS2DW12 initialization, identity verification, XYZ reads, conversion, motion-engine updates, and status output.
+- `motion_engine.c` / `motion_engine.h`: polling-based motion state, threshold event flags, counters, movement duration, dynamic acceleration, and maximum magnitude.
+- `app_config.h`: centralized compile-time accelerometer settings, motion thresholds, timing values, and UART diagnostic enablement.
+- `board_pins.h`: custom PCB UART, I2C, and LIS2DW12 interrupt pin assignments.
+
+## Sensor and Bus Layers
+
+- `i2c_bus.c` / `i2c_bus.h`: reusable TI-RTOS I2C wrapper for raw and register-oriented transfers.
+- `lis2dw12_port_ti.c` / `lis2dw12_port_ti.h`: adapter between the ST `stmdev_ctx_t` callbacks and the shared TI I2C bus wrapper.
+- `lis2dw12_driver.c` / `lis2dw12_driver.h`: application-facing LIS2DW12 initialization, polling configuration, identity/status reads, raw XYZ reads, integer mg conversion, and magnitude calculation.
+- `third_party/st/lis2dw12_reg.c` / `third_party/st/lis2dw12_reg.h`: platform-independent LIS2DW12 register access layer.
+
+## RF and Platform Files
+
+- `easylink/`: TI EasyLink implementation and API configuration.
+- `smartrf_settings/`: SmartRF-generated radio settings.
+- `CC1310_LAUNCHXL.c` / `CC1310_LAUNCHXL.h`: TI driver configuration adapted as the current board-support base.
+- `Board.h`: board abstraction used by the application and TI drivers.
+- `ccfg.c`: CC1310 customer configuration.
+- `CC1310_LAUNCHXL_TIRTOS.cmd`: linker command file.
 - `targetConfigs/`: CCS target configuration for the CC1310.
 
-## CCS Project Files
+The RF task currently sends example-derived EasyLink payloads. No sensor measurements or motion events are encoded into RF packets.
 
-These files are part of the importable CCS project and should be committed:
+## CCS Project Metadata
+
+The following files support CCS import and should remain committed:
 
 - `.project`
 - `.cproject`
@@ -32,49 +63,41 @@ These files are part of the importable CCS project and should be committed:
 - `targetConfigs/CC1310F128.ccxml`
 - `targetConfigs/readme.txt`
 
-## Files To Commit
+Generated build directories and local workspace state are excluded by the root `.gitignore`.
 
-Commit these categories:
+## Configuration
 
-- Root documentation: `README.md`, `Docs/Architecture.md`, and `Docs/FirmwareStructure.md`.
-- Firmware source and headers: `*.c`, `*.h`, and linker command files such as `*.cmd`.
-- CCS project import metadata: `.project`, `.cproject`, `.ccsproject`, and `targetConfigs/`.
-- RF configuration source under `smartrf_settings/`.
-- EasyLink source and headers included with the project.
-- Third-party source files that are intentionally vendored in the firmware tree.
-- Hardware design files under `Hardware/` when they are added and are intended for publication.
+The implemented configuration framework is compile-time:
 
-## Files Not To Commit
+- Accelerometer address: `0x19`.
+- Accelerometer sample setting: 25 Hz.
+- Accelerometer full scale: +/-2 g.
+- Motion, shock, severe-shock, drop, and sustained-high-g thresholds.
+- Movement stop and event burst timing constants.
+- Custom board DIO assignments.
+- EasyLink and SmartRF PHY settings.
 
-Do not commit these categories:
+The framework does not currently provide runtime persistence, over-the-air configuration, or a command interface.
 
-- `Debug/` and `Release/` build output directories.
-- Object files and dependency files such as `*.obj`, `*.o`, `*.d`, and `*.d_raw`.
-- Linker and image outputs such as `*.map`, `*.out`, `*.hex`, `*.bin`, and `*_linkInfo.xml`.
-- Generated CCS make fragments such as `makefile`, `objects.mk`, `sources.mk`, `subdir_rules.mk`, and `subdir_vars.mk`.
-- Local CCS/Eclipse workspace state such as `.settings/` and `.metadata/`.
-- Local clangd indexes and generated compile databases such as `.clangd/` and `compile_commands.json`.
-- Temporary editor or operating-system files such as `*.tmp`, `*.bak`, `*.swp`, `.DS_Store`, and `Thumbs.db`.
-- Local automation notes under `.codex/`.
+## Current Status
 
-## Current Firmware Status
+Completed and verified:
 
-Completed:
+- Custom CC1310 PCB assembly and programming.
+- UART, I2C, and EasyLink RF transmit operation.
+- AHT20 detection at `0x38`.
+- LIS2DW12 detection at `0x19`.
+- LIS2DW12 `WHO_AM_I = 0x44` verification.
+- XYZ polling.
+- Integer mg conversion and magnitude calculation.
+- Rotation validation.
+- Motion engine implementation.
+- Compile-time configuration framework.
 
-- UART
-- I2C
-- AHT20 detection at `0x38`
-- LIS2DW12 detection at `0x19`
-- LIS2DW12 `WHO_AM_I = 0x44` verification
+Not yet implemented:
 
-In Progress:
-
-- LIS2DW12 driver
-- Accelerometer polling
-
-Planned:
-
-- Motion engine
-- RF sensor packets
-- LIS2DW12 interrupts
-- Low power operation
+- LIS2DW12 interrupt handling on INT1/INT2.
+- Event-driven wake-up.
+- RF sensor packet format and transmission.
+- Deep sleep.
+- CR2450 power optimization.
