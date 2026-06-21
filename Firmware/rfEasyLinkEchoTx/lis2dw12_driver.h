@@ -42,5 +42,7 @@ lis2dw12_driver_status_t lis2dw12_driver_configure_basic(void);
 lis2dw12_driver_status_t lis2dw12_driver_read_raw(lis2dw12_raw_t *raw);
 lis2dw12_driver_status_t lis2dw12_driver_read_mg(lis2dw12_accel_mg_t *accel);
 lis2dw12_driver_status_t lis2dw12_driver_get_status(uint8_t *status);
+lis2dw12_driver_status_t lis2dw12_enable_activity_interrupt(void);
+lis2dw12_driver_status_t lis2dw12_clear_activity_interrupt(void);
 
 #endif /* LIS2DW12_DRIVER_H_ */

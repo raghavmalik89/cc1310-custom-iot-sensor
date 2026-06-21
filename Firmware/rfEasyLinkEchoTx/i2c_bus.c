@@ -141,3 +141,8 @@ i2c_bus_status_t i2c_bus_read(uint8_t dev_addr,
 
     return I2C_transfer(i2cHandle, &transaction) ? I2C_BUS_OK : I2C_BUS_ERR_TRANSFER;
 }
+
+I2C_Handle i2c_bus_get_handle(void)
+{
+    return i2cReady ? i2cHandle : NULL;
+}

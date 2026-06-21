@@ -1,5 +1,6 @@
 #include "lis2dw12_driver.h"
 
+#include "app_config.h"
 #include "lis2dw12_port_ti.h"
 #include "third_party/st/lis2dw12_reg.h"
 
@@ -10,6 +11,24 @@
 
 #define LIS2DW12_RAW_16BIT_2G_DENOM           32768L
 #define LIS2DW12_RAW_16BIT_2G_NUM             2000L
+
+#define LIS2DW12_REG_CTRL3                     0x22U
+#define LIS2DW12_REG_CTRL4_INT1_PAD_CTRL       0x23U
+#define LIS2DW12_REG_WAKE_UP_THS               0x34U
+#define LIS2DW12_REG_WAKE_UP_DUR               0x35U
+#define LIS2DW12_REG_WAKE_UP_SRC               0x38U
+#define LIS2DW12_REG_CTRL7                     0x3FU
+
+#define LIS2DW12_CTRL3_PP_OD                   0x20U
+#define LIS2DW12_CTRL3_LIR                     0x10U
+#define LIS2DW12_CTRL3_H_LACTIVE               0x08U
+#define LIS2DW12_CTRL4_INT1_WU                 0x20U
+#define LIS2DW12_CTRL7_INTERRUPTS_ENABLE       0x20U
+
+#define LIS2DW12_WAKE_UP_THS_MASK              0x3FU
+#define LIS2DW12_WAKE_UP_DUR_MASK              0x60U
+#define LIS2DW12_WAKE_UP_DUR_SHIFT             5U
+#define LIS2DW12_WAKE_UP_DUR_MAX               3U
 
 static stmdev_ctx_t lis2dw12Ctx;
 static lis2dw12_driver_config_t lis2dw12Cfg;
@@ -47,6 +66,16 @@ static uint32_t isqrt_u64(uint64_t value)
 static int32_t raw_to_mg(int16_t raw)
 {
     return ((int32_t)raw * LIS2DW12_RAW_16BIT_2G_NUM) / LIS2DW12_RAW_16BIT_2G_DENOM;
+}
+
+static int32_t read_register(uint8_t reg, uint8_t *value)
+{
+    return lis2dw12_read_reg(&lis2dw12Ctx, reg, value, 1);
+}
+
+static int32_t write_register(uint8_t reg, uint8_t value)
+{
+    return lis2dw12_write_reg(&lis2dw12Ctx, reg, &value, 1);
 }
 
 lis2dw12_driver_status_t lis2dw12_driver_init(const lis2dw12_driver_config_t *cfg)
@@ -184,5 +213,117 @@ lis2dw12_driver_status_t lis2dw12_driver_get_status(uint8_t *status)
     }
 
     return (lis2dw12_status_get(&lis2dw12Ctx, status) == 0) ?
+           LIS2DW12_DRIVER_OK : LIS2DW12_DRIVER_ERR_I2C;
+}
+
+lis2dw12_driver_status_t lis2dw12_enable_activity_interrupt(void)
+{
+    uint32_t fullScaleMg;
+    uint32_t threshold;
+    uint32_t duration;
+    uint8_t value;
+
+    if (!lis2dw12Configured)
+    {
+        return LIS2DW12_DRIVER_ERR_NOT_READY;
+    }
+
+    fullScaleMg = (uint32_t)lis2dw12Cfg.full_scale_g * 1000U;
+    threshold = ((uint32_t)APP_ACCEL_ACTIVITY_THRESHOLD_MG * 64U +
+                 fullScaleMg - 1U) / fullScaleMg;
+    if (threshold == 0U)
+    {
+        threshold = 1U;
+    }
+    else if (threshold > LIS2DW12_WAKE_UP_THS_MASK)
+    {
+        threshold = LIS2DW12_WAKE_UP_THS_MASK;
+    }
+
+    duration = ((uint32_t)APP_ACCEL_ACTIVITY_DURATION_MS *
+                lis2dw12Cfg.odr_hz + 999U) / 1000U;
+    if (duration > LIS2DW12_WAKE_UP_DUR_MAX)
+    {
+        duration = LIS2DW12_WAKE_UP_DUR_MAX;
+    }
+
+    /*
+     * WAKE_UP_THS (0x34): threshold in FS/64 steps.
+     * WAKE_UP_DUR (0x35): duration in ODR periods.
+     * CTRL3 (0x22): push-pull, latched, configured interrupt polarity.
+     * CTRL4_INT1_PAD_CTRL (0x23): route wake-up recognition to INT1.
+     * CTRL7 (0x3F): enable embedded-function interrupts using HP-filter data.
+     */
+    if (read_register(LIS2DW12_REG_WAKE_UP_THS, &value) != 0)
+    {
+        return LIS2DW12_DRIVER_ERR_CONFIG;
+    }
+    value = (value & (uint8_t)~LIS2DW12_WAKE_UP_THS_MASK) |
+            (uint8_t)threshold;
+    if (write_register(LIS2DW12_REG_WAKE_UP_THS, value) != 0)
+    {
+        return LIS2DW12_DRIVER_ERR_CONFIG;
+    }
+
+    if (read_register(LIS2DW12_REG_WAKE_UP_DUR, &value) != 0)
+    {
+        return LIS2DW12_DRIVER_ERR_CONFIG;
+    }
+    value = (value & (uint8_t)~LIS2DW12_WAKE_UP_DUR_MASK) |
+            (uint8_t)(duration << LIS2DW12_WAKE_UP_DUR_SHIFT);
+    if (write_register(LIS2DW12_REG_WAKE_UP_DUR, value) != 0)
+    {
+        return LIS2DW12_DRIVER_ERR_CONFIG;
+    }
+
+    if (read_register(LIS2DW12_REG_CTRL3, &value) != 0)
+    {
+        return LIS2DW12_DRIVER_ERR_CONFIG;
+    }
+    value &= (uint8_t)~LIS2DW12_CTRL3_PP_OD;
+    value |= LIS2DW12_CTRL3_LIR;
+#if APP_ACCEL_INT1_ACTIVE_HIGH
+    value &= (uint8_t)~LIS2DW12_CTRL3_H_LACTIVE;
+#else
+    value |= LIS2DW12_CTRL3_H_LACTIVE;
+#endif
+    if (write_register(LIS2DW12_REG_CTRL3, value) != 0)
+    {
+        return LIS2DW12_DRIVER_ERR_CONFIG;
+    }
+
+    if (read_register(LIS2DW12_REG_CTRL4_INT1_PAD_CTRL, &value) != 0)
+    {
+        return LIS2DW12_DRIVER_ERR_CONFIG;
+    }
+    value |= LIS2DW12_CTRL4_INT1_WU;
+    if (write_register(LIS2DW12_REG_CTRL4_INT1_PAD_CTRL, value) != 0)
+    {
+        return LIS2DW12_DRIVER_ERR_CONFIG;
+    }
+
+    if (read_register(LIS2DW12_REG_CTRL7, &value) != 0)
+    {
+        return LIS2DW12_DRIVER_ERR_CONFIG;
+    }
+    value |= LIS2DW12_CTRL7_INTERRUPTS_ENABLE;
+    if (write_register(LIS2DW12_REG_CTRL7, value) != 0)
+    {
+        return LIS2DW12_DRIVER_ERR_CONFIG;
+    }
+
+    return lis2dw12_clear_activity_interrupt();
+}
+
+lis2dw12_driver_status_t lis2dw12_clear_activity_interrupt(void)
+{
+    uint8_t source;
+
+    if (!lis2dw12Configured)
+    {
+        return LIS2DW12_DRIVER_ERR_NOT_READY;
+    }
+
+    return (read_register(LIS2DW12_REG_WAKE_UP_SRC, &source) == 0) ?
            LIS2DW12_DRIVER_OK : LIS2DW12_DRIVER_ERR_I2C;
 }

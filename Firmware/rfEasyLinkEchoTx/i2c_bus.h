@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include <ti/drivers/I2C.h>
+
 typedef enum
 {
     I2C_BUS_OK = 0,
@@ -27,5 +29,6 @@ i2c_bus_status_t i2c_bus_write(uint8_t dev_addr,
 i2c_bus_status_t i2c_bus_read(uint8_t dev_addr,
                               uint8_t *data,
                               uint16_t len);
+I2C_Handle i2c_bus_get_handle(void);
 
 #endif /* I2C_BUS_H_ */
